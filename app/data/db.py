@@ -6,7 +6,7 @@ DB_PATH = Path("DATA") / "intelligence_platform.db"
 
 def connect_database(db_path=DB_PATH):
     
-    #check if data folder exists, else create data folder
+    #check if data folder already exists, else create data folder
     if not db_path.parent.exists():
         db_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Created the data folder")
