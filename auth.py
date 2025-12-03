@@ -1,7 +1,7 @@
 import bcrypt
 import os
 import re
-from pathlib import Path 
+from pathlib import Path
 
 USER_DATA_FILE = Path("users.txt")
 
