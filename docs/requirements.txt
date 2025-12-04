@@ -1,5 +1,5 @@
 git log
-bcrypt==4.2.0
+bcrypt==5.0.0
 pandas
 streamlit
 
