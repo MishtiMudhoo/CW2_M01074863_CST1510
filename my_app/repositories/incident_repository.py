@@ -48,12 +48,27 @@ class SecurityIncidentRepository:
                 # Model: date, threat_category, severity, status, resolution_time_hours
                 try:
                     date = pd.to_datetime(row['date']).to_pydatetime()
+                    
+                    # Map severity: Critical -> High (model only accepts High/Medium/Low)
+                    severity = row.get('severity', 'Medium')
+                    if severity == 'Critical':
+                        severity = 'High'
+                    
+                    # Get status and handle resolved incidents
+                    status = row.get('status', 'Unresolved')
+                    resolution_time_hours = None
+                    
+                    # If status is Resolved but no resolution time, set a default or change status
+                    if status == 'Resolved':
+                        # Set a default resolution time (24 hours) if not available
+                        resolution_time_hours = 24.0
+                    
                     incident = SecurityIncident(
                         date=date,
                         threat_category=row.get('incident_type', 'Unknown'),
-                        severity=row.get('severity', 'Medium'),
-                        status=row.get('status', 'Unresolved'),
-                        resolution_time_hours=None  # Not in DB schema
+                        severity=severity,
+                        status=status,
+                        resolution_time_hours=resolution_time_hours
                     )
                     incidents.append(incident)
                 except Exception as e:

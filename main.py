@@ -3,6 +3,7 @@ from app.data.schema import create_all_tables
 from app.services.user_service import register_user, login_user, migrate_users_from_file
 from app.data.incidents import insert_incident, get_all_incidents, update_incident_status, delete_incident
 from app.data.incidents import get_incidents_by_type_count, get_high_severity_by_status
+from app.data.csv_loader import load_all_csv_data
 import pandas as pd
 
 
@@ -33,9 +34,7 @@ def setup_database_complete():
     migrate_users_from_file(conn, 'DATA/users.txt')
     
     # Step 4: Load CSV data
-    print("\n[4/5] Loading CSV data...")
-    # Placeholder for CSV loading logic
-    print("       CSV loading logic not implemented yet.")
+    load_all_csv_data(conn)
     
     # Step 5: Verify
     print("\n[5/5] Verifying database setup...")

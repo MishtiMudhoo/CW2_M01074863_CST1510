@@ -16,6 +16,7 @@ from my_app.services.it_ticket_service import ITTicketService
 from my_app.AI.ai_assistant import itoperations_ai_chat
 from my_app.models.it_ticket import ITTicket
 from app.data.db import connect_database
+from app.data.csv_loader import load_it_tickets_csv
 from datetime import datetime, date, timedelta
 
 # Get API key from environment variable
@@ -139,13 +140,20 @@ st.success(f"Welcome, **{st.session_state.username}**! Service Desk Performance 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "🤖 AI Assistant", "✏️ Manage Tickets", "🔍 Filter & Search"])
 
 # Generate data using OOP structure
-# Try to load from database first, fallback to generated data if empty
+# Try to load from database first, fallback to CSV, then generated data if empty
 repository = ITTicketRepository(use_database=True)
 if repository.count() == 0:
-    # No data in database, generate sample data
-    generator = ITTicketGenerator(seed=42)
-    tickets = generator.generate(num_tickets=150)
-    repository = ITTicketRepository(tickets, use_database=False)
+    # No data in database, try loading from CSV
+    conn = connect_database()
+    load_it_tickets_csv(conn)
+    conn.close()
+    # Reload repository to get CSV data
+    repository = ITTicketRepository(use_database=True)
+    if repository.count() == 0:
+        # Still no data, generate sample data
+        generator = ITTicketGenerator(seed=42)
+        tickets = generator.generate(num_tickets=150)
+        repository = ITTicketRepository(tickets, use_database=False)
 service = ITTicketService(repository)
 df_tickets = service.to_dataframe()
 

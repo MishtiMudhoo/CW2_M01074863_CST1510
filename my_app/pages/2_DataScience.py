@@ -16,6 +16,7 @@ from my_app.services.dataset_service import DatasetService
 from my_app.AI.ai_assistant import datascience_ai_chat
 from my_app.models.dataset import Dataset
 from app.data.db import connect_database
+from app.data.csv_loader import load_datasets_metadata_csv
 from datetime import datetime, date
 
 # Get API key from environment variable
@@ -139,13 +140,20 @@ st.success(f"Welcome, **{st.session_state.username}**! Data Governance & Discove
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "🤖 AI Assistant", "✏️ Manage Datasets", "🔍 Filter & Search"])
 
 # Generate data using OOP structure
-# Try to load from database first, fallback to generated data if empty
+# Try to load from database first, fallback to CSV, then generated data if empty
 repository = DatasetRepository(use_database=True)
 if len(repository.get_all()) == 0:
-    # No data in database, generate sample data
-    generator = DatasetGenerator(seed=42)
-    datasets = generator.generate()
-    repository = DatasetRepository(datasets, use_database=False)
+    # No data in database, try loading from CSV
+    conn = connect_database()
+    load_datasets_metadata_csv(conn)
+    conn.close()
+    # Reload repository to get CSV data
+    repository = DatasetRepository(use_database=True)
+    if len(repository.get_all()) == 0:
+        # Still no data, generate sample data
+        generator = DatasetGenerator(seed=42)
+        datasets = generator.generate()
+        repository = DatasetRepository(datasets, use_database=False)
 service = DatasetService(repository)
 df_datasets = service.to_dataframe()
 

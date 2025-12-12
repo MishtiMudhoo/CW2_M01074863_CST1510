@@ -17,6 +17,7 @@ from my_app.AI.ai_assistant import cybersecurity_ai_chat
 from my_app.models.incident import SecurityIncident
 from app.data.incidents import insert_incident, update_incident_status, delete_incident
 from app.data.db import connect_database
+from app.data.csv_loader import load_cyber_incidents_csv
 from datetime import datetime
 
 # Get API key from environment variable
@@ -140,15 +141,65 @@ st.success(f"Welcome, **{st.session_state.username}**! Monitoring security incid
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "🤖 AI Assistant", "✏️ Manage Incidents", "🔍 Filter & Search"])
 
 # Generate data using OOP structure
-# Try to load from database first, fallback to generated data if empty
+# Always load fresh from database (no caching)
+# Try to load from database first, fallback to CSV, then generated data if empty
+conn = connect_database()
+cursor = conn.cursor()
+cursor.execute("SELECT COUNT(*) FROM cyber_incidents")
+db_count = cursor.fetchone()[0]
+conn.close()
+
+if db_count == 0:
+    # No data in database, try loading from CSV
+    conn = connect_database()
+    load_cyber_incidents_csv(conn, clear_existing=False)
+    conn.close()
+
+# Always create fresh repository from database
+# Force reload by checking database directly first
+conn = connect_database()
+cursor = conn.cursor()
+cursor.execute("SELECT COUNT(*) FROM cyber_incidents")
+actual_db_count = cursor.fetchone()[0]
+conn.close()
+
+# Create repository fresh from database
 repository = SecurityIncidentRepository(use_database=True)
-if repository.count() == 0:
-    # No data in database, generate sample data
-    generator = SecurityIncidentGenerator(seed=42)
-    incidents = generator.generate(days=30)
-    repository = SecurityIncidentRepository(incidents, use_database=False)
+actual_repo_count = repository.count()
+
+# CRITICAL: Only generate if database is truly empty AND repository is empty
+# Never generate if database has data (even if repository failed to load it)
+if actual_db_count == 0 and actual_repo_count == 0:
+    # Database is empty, try loading from CSV first
+    conn = connect_database()
+    load_cyber_incidents_csv(conn, clear_existing=False)
+    conn.close()
+    
+    # Reload repository after CSV load
+    repository = SecurityIncidentRepository(use_database=True)
+    actual_repo_count = repository.count()
+    
+    # Only generate if still empty after CSV load attempt
+    if actual_repo_count == 0:
+        # Still no data, generate sample data
+        generator = SecurityIncidentGenerator(seed=42)
+        incidents = generator.generate(days=30)
+        repository = SecurityIncidentRepository(incidents, use_database=False)
+elif actual_db_count > 0 and actual_repo_count == 0:
+    # Database has data but repository failed to load - this is an error
+    st.error(f"⚠️ Database has {actual_db_count} incidents but repository loaded 0. There may be data validation issues.")
+    st.info("💡 Try reloading the CSV data using: `python reload_csv_data.py --yes`")
+elif actual_db_count != actual_repo_count:
+    # Count mismatch - show warning
+    st.warning(f"⚠️ Count mismatch: Database has {actual_db_count}, Repository has {actual_repo_count}")
+
 service = SecurityIncidentService(repository)
 df_incidents = service.to_dataframe()
+
+# Final verification
+final_count = len(df_incidents)
+if final_count != actual_db_count and actual_db_count > 0:
+    st.error(f"🔴 Data mismatch detected! Database: {actual_db_count}, Displayed: {final_count}. Please refresh the page.")
 
 # ========== DASHBOARD TAB ==========
 with tab1:
