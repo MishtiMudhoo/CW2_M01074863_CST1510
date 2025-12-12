@@ -1,11 +1,57 @@
 import streamlit as st
 import pandas as pd
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from my_app.repositories.user_repository import UserRepository
+from my_app.services.user_service import UserService
+from my_app.utilities.db_init import ensure_database_initialized
+
+# Ensure database is initialized
+ensure_database_initialized()
 
 st.set_page_config(page_title="Login / Register", page_icon="🔑", layout="centered")
 
+# Set light pink background for this page
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #FFE5F1 !important;
+        background: #FFE5F1 !important;
+    }
+    .main .block-container {
+        background-color: #FFE5F1 !important;
+        background: #FFE5F1 !important;
+    }
+    body {
+        background-color: #FFE5F1 !important;
+        background: #FFE5F1 !important;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #FFDDF4 !important;
+        background: #FFDDF4 !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        background-color: #FFDDF4 !important;
+        background: #FFDDF4 !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #FFDDF4 !important;
+        background: #FFDDF4 !important;
+    }
+    header[data-testid="stHeader"] {
+        background-color: #FFE5F1 !important;
+        background: #FFE5F1 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # ---------- Initialise session state ----------
 if "users" not in st.session_state:
-    # Very simple in-memory "database": {username: password}
+    # Store user data: {username: {"password": pwd, "role": role}}
     st.session_state.users = {}
 
 if "logged_in" not in st.session_state:
@@ -14,15 +60,30 @@ if "logged_in" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 
+if "user_role" not in st.session_state:
+    st.session_state.user_role = ""
+
+# Initialize services
+# Use database for persistence, but fall back to session state if needed
+user_repository = UserRepository(use_database=True)
+user_service = UserService(user_repository)
+
+# Role to page mapping
+ROLE_PAGES = {
+    "Cyber Security": "pages/1_cybersecurity.py",
+    "Data Scientist": "pages/2_datascience.py",
+    "IT Operations": "pages/3_IToperations.py"
+}
+
 st.title("🔐 Welcome")
 
-# If already logged in, go straight to dashboard (optional)
-if st.session_state.logged_in:
-    st.success(f"Already logged in as **{st.session_state.username}**.")
+# If already logged in, redirect to appropriate page
+if st.session_state.logged_in and st.session_state.user_role:
+    st.success(f"Already logged in as **{st.session_state.username}** ({st.session_state.user_role}).")
     if st.button("Go to dashboard"):
-        # Use the official navigation API to switch pages
-        st.switch_page("pages/1_Dashboard.py")  # path is relative to Home.py :contentReference[oaicite:1]{index=1}
-    st.stop()  # Don’t show login/register again
+        page = ROLE_PAGES.get(st.session_state.user_role, "pages/1_cybersecurity.py")
+        st.switch_page(page)
+    st.stop()  # Don't show login/register again
 
 
 # ---------- Tabs: Login / Register ----------
@@ -36,15 +97,16 @@ with tab_login:
     login_password = st.text_input("Password", type="password", key="login_password")
 
     if st.button("Log in", type="primary"):
-        # Simple credential check (for teaching only – not secure!)
-        users = st.session_state.users
-        if login_username in users and users[login_username] == login_password:
+        user = user_service.login(login_username, login_password)
+        if user:
             st.session_state.logged_in = True
-            st.session_state.username = login_username
-            st.success(f"Welcome back, {login_username}! ")
+            st.session_state.username = user.username
+            st.session_state.user_role = user.role
+            st.success(f"Welcome back, {login_username}! Redirecting to your dashboard...")
 
-            # Redirect to dashboard page
-            st.switch_page("pages/1_Dashboard.py")
+            # Redirect to appropriate page based on role
+            page = ROLE_PAGES.get(st.session_state.user_role, "pages/1_cybersecurity.py")
+            st.switch_page(page)
         else:
             st.error("Invalid username or password.")
 
@@ -56,17 +118,23 @@ with tab_register:
     new_username = st.text_input("Choose a username", key="register_username")
     new_password = st.text_input("Choose a password", type="password", key="register_password")
     confirm_password = st.text_input("Confirm password", type="password", key="register_confirm")
+    user_role = st.selectbox(
+        "Select your role",
+        ["Cyber Security", "Data Scientist", "IT Operations"],
+        key="register_role"
+    )
 
     if st.button("Create account"):
-        # Basic checks – again, just for teaching
+        # Basic checks
         if not new_username or not new_password:
             st.warning("Please fill in all fields.")
         elif new_password != confirm_password:
             st.error("Passwords do not match.")
-        elif new_username in st.session_state.users:
-            st.error("Username already exists. Choose another one.")
         else:
-            # "Save" user in our simple in-memory store
-            st.session_state.users[new_username] = new_password
-            st.success("Account created! You can now log in from the Login tab.")
-            st.info("Tip: go to the Login tab and sign in with your new account.")
+            # Use service to register user
+            success, error_msg = user_service.register_user(new_username, new_password, user_role)
+            if success:
+                st.success(f"Account created for {user_role}! You can now log in from the Login tab.")
+                st.info("Tip: go to the Login tab and sign in with your new account.")
+            else:
+                st.error(error_msg)

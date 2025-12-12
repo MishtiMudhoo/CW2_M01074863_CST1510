@@ -2,4 +2,6 @@ git log
 bcrypt==5.0.0
 pandas
 streamlit
+openai
+python-dotenv
 
